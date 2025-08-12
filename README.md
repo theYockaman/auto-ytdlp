@@ -15,7 +15,7 @@ I have recently made it harder to break the application by fixing bugs. If you f
 1. [Install `yt-dlp`](https://github.com/yt-dlp/yt-dlp#installation)
 2. Clone this repo and make the script executable
    ```sh
-   git clone https://github.com/exadisme/auto-ytdlp.git
+   git clone https://github.com/theYockaman/auto-ytdlp.git
    cd auto-ytdlp
    chmod +x auto-ytdlp
    ```
