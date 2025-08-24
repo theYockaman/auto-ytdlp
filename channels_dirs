@@ -1,0 +1,5 @@
+#!/bin/bash
+# Array of directories of the folders the videos will be saved in.
+declare -g -a channel_dirs=(
+)
+export channel_dirs

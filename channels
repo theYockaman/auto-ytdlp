@@ -1,0 +1,5 @@
+#!/bin/bash
+# Array of channel URLs.
+declare -g -a channels=( 
+)
+export channels

@@ -1,0 +1,5 @@
+#!/bin/bash
+# Array of channel names
+declare -g -a channel_names=(
+)
+export channel_names

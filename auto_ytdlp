@@ -1,0 +1,224 @@
+#!/bin/bash
+appname="auto-ytdlp"
+ver="0.2"
+license="MIT License Copyright (c) 2022 Adam"
+
+# Makes sure the script is operating in the proper directory.
+cd "$(dirname "$0")"
+
+# sourcing config files which contain the arrays to make it easier to write permanent changes.
+source channel_dirs
+source channel_names
+source channels
+source config
+
+# Number of days to look back for new content.
+let download_date="$(date -d  "$download_days days ago" '+%Y%m%d')"
+
+# Capture arguments
+declare -g -a args=${@:1}
+export args
+declare -g -a first=$(echo $args | awk -v var="$args" '{print $2}' )
+export first
+declare -g -a second=$(echo $args | awk -v var="$args" '{print $3}' )
+export second
+declare -g -a third=$(echo $args | cut -d' ' -f4-)
+export third
+
+# Getting the original amount of files in each directory and populating
+# the array with the number for each.
+dir_size_orig=(
+)
+
+for ((i=0; i<${#channels[@]}; i++)); do
+   dir_size_orig[$i]=$(ls -l ${channel_dirs[$i]} | grep -c '^-')
+done
+
+# Directory size change.
+dir_size_diff=(
+)
+
+# Funtion that displays the help menu.
+function helpmenu() {
+   echo Usage: 
+   echo "    " "auto-ytdlp""                                       Will check for youtube video updates and download them."
+   echo "    " "auto-ytdlp [options]"
+   echo ""
+   echo "Options:"
+   echo "    " "--help""                                           Shows this menu."
+   echo "    " "-l""                                               List all currently added channels."
+   echo "    " "-a <URL> <SaveDirectory> <Name of the channel>""   Add a channel or playlist."
+   echo "    " "-d <number>""                                      Delete a channel. Get the number from list."
+   echo "    " "-u <number>""                                      Change how far back, in days, the script looks for new videos. Default is 5 days back."
+   echo "    " "-p <number>""                                      Change how many videos in the playlist yt-dlp will check the dates of. Higher value can increase the time it takes to fetch videos, Lower values may cause you to miss videos if content is uploaded often. Default is 10."
+exit
+}
+
+function check_null {
+   if [ -z $first ]; then
+      echo "Error: no input given."
+      echo ""
+      helpmenu
+   fi
+}
+
+function check_num {
+   numb=8
+   re='^[0-'$numb']+$'
+   if ! [[ $first =~ $re ]] ; then
+      echo "Error: $first is not a valid number" >&2; exit 1
+   fi
+}
+
+# Function for adding new channels/playlists
+function add_channel() {
+   if [ -z $first ]; then
+      echo "Error: a URL is required"
+      echo "Usage: auto-ytdlp -a <URL> <SaveDirectory> <Name of the channel>"
+      exit
+   elif [ -z $second ]; then
+      echo "Error: a directory is required"
+      echo "Usage: auto-ytdlp -a <URL> <SaveDirectory> <Name of the channel>"
+      exit
+      elif [[ -z "${third%% *}" ]]; then
+      echo "Error: a name is required"
+      echo "Usage: auto-ytdlp -a <URL> <SaveDirectory> <Name of the channel>"
+      exit
+   fi
+   for channel in "${channels[@]}"; do
+      if [[ "$channel" == "$first" ]]; then
+         echo "Channel $first already exists."
+         exit
+      fi
+   done
+   if [ ! -d $second ]; then
+      echo "Warning directory $second does not exist"
+      echo "Creating directory: $second"
+      mkdir -p $second
+   fi
+   sed -i -e "4i\\   \"$first\"" channels
+   sed -i -e "4i\\   \"$second\"" channel_dirs
+   sed -i -e "4i\\   \"$third\"" channel_names
+}
+
+# function for deleting channels
+function del_channel() {
+   delnum=$first
+   any_chans=$(wc -l channel_names | awk '{print $1}')
+   limit=$(expr $any_chans - 2)
+   check_null
+   check_num
+   if [ $any_chans -le 5 ]; then
+      echo "Error: no channels to delete"
+   elif [ $delnum -le 0 ]; then
+      echo "Error: not a valid option. List options with -l"
+   else
+      ndelnum=$(expr $delnum + 3)
+      if [ $ndelnum -gt $limit ]; then
+         echo "Error: choice $delnum does not exist. List options with -l"
+         exit
+      fi
+      delnum_ver=$(expr $delnum - 1)
+      echo ""
+      echo "["${channel_names[$delnum_ver]}"]"
+      echo "URL: ["${channels[$delnum_ver]}"]"
+      echo "Directory: ["${channel_dirs[$delnum_ver]}"]"
+      echo ""
+      while true; do
+         read -p "Are you sure you want to delete this entry? (yes/no) " response
+         if [[ $response == "yes" || $response == "Yes" || $response == "y" ]]; then
+            sed -i -e "${ndelnum}d" channels
+            sed -i -e "${ndelnum}d" channel_names
+            sed -i -e "${ndelnum}d" channel_dirs
+            break
+         elif [[ $response == "no" || $response == "No" || $response == "n" ]]; then
+            echo ""
+            echo "Entry not deleted."
+            break
+         fi
+      echo "Invalid response. Please enter yes or no. "
+      done
+   fi
+}
+
+# Funtion for listing channels
+function list_channels() {
+   if [ -z ${channels[0]} ]; then
+      echo "There are no channels/playlists currently added."
+      exit
+   else
+   for ((i=0; i<${#channels[@]}; i++)); do
+      echo $(expr $i + 1).  "["${channel_names[$i]}"]" 
+      echo "   ""URL: [${channels[$i]}]"
+      echo "   ""Directory: ["${channel_dirs[$i]}"]"
+   done
+   exit
+   fi
+}
+
+function change_days() {
+   check_null
+   check_num
+   sed -i "s/download_days=.*/download_days=$first/" config
+   echo "Auto-ytdlp will download videos from up $first prior."
+   exit
+}
+
+function change_playlist_end() {
+   check_null
+   check_num
+   sed -i "s/playlist_end=.*/playlist_end=$first/" config
+   echo "Auto-ytdlp will check the dates of $first video(s) in the playlist."
+   exit
+}
+
+if [ -n "$1" ]; then
+      if [ $1 = --help ] || [ $1 = -help ] || [ $1 = -h ]; then
+         helpmenu
+         exit
+      fi
+      if [ $1 = "-a" ] || [ $1 = "add" ]; then
+         add_channel
+         exit
+      fi
+      if [ $1 = "-d" ] || [ $1 = "del" ]; then
+         del_channel
+         exit
+      fi
+      if [ $1 = "-l" ] || [ $1 = "list" ]; then
+         list_channels
+         exit
+      fi
+      if [ $1 = "-u" ]; then
+         change_days
+         exit
+      fi
+      if [ $1 = "-p" ]; then
+         change_playlist_end
+         exit
+      fi
+      if [ $1 = "-v" ]; then
+         echo $appname $ver 
+         echo $license
+         exit
+      fi
+fi
+
+# Letting you know it's running so you don't wonder why your internet is being used.
+if [[ -f /usr/bin/notify-send ]]; then
+notify-send --expire-time=10000 "Youtube Auto Download" "Checking for new videos.\nIf new episodes are downloaded, you will be notified."
+fi
+
+# Records the number of files in echo directory prior to downloading.
+
+# For each of the channels added, this downloads the latest 10 videos for the 
+# date range specified, calculates the change in number of files, and notifies 
+# of the number of episodes updated.
+for ((i=0; i<${#channels[@]}; i++)); do
+   cd ${channel_dirs[$i]}
+   yt-dlp --geo-bypass --download-archive .archive --dateafter $download_date ${channels[$i]} --playlist-end $playlist_end 
+   dir_size_diff[$i]=$(expr $(ls -l ${channel_dirs[$i]} | grep -c '^-') - ${dir_size_orig[$i]})
+   if [[ ${dir_size_diff[$i]} -gt 0 ]] && [[ -f /usr/bin/notify-send ]]; then
+      notify-send --expire-time=20000 "${channel_names[$i]}" "${dir_size_diff[$i]} episodes downloaded"
+   fi
+done
